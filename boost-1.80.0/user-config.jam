@@ -1,0 +1,23 @@
+import os ;
+local AndroidNDKHome = [ os.environ ANDROID_NDK_HOME ] ;
+
+using clang : arm64v8a
+:
+$(AndroidNDKHome)/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android28-clang++
+:
+$(AndroidNDKHome)/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-ar
+$(AndroidNDKHome)/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-ranlib
+<compileflags>-fPIC
+<compileflags>-ffunction-sections
+<compileflags>-fdata-sections
+<compileflags>-funwind-tables
+<compileflags>-fstack-protector-strong
+<compileflags>-no-canonical-prefixes
+<compileflags>-Wformat
+<compileflags>-Werror=format-security
+<compileflags>-frtti
+<compileflags>-fexceptions
+<compileflags>-DNDEBUG
+<compileflags>-Oz
+
+;

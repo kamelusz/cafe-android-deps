@@ -1,0 +1,118 @@
+name: Build on every push
+
+on: [push]
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+    
+    steps:
+    - uses: actions/checkout@v1
+    - name: Install deps
+      run: |
+        sudo apt-get -qq update
+        sudo apt-get -qq install -y --no-install-recommends --no-install-suggests \
+          git \
+          wget \
+          xz-utils \
+          unzip \
+          bzip2 \
+          cmake \
+          build-essential \
+          ninja-build
+    - name: Prepare Android NDK
+      run: |
+        wget -q --no-check-certificate https://dl.google.com/android/repository/android-ndk-r25-linux.zip
+        unzip -qq android-ndk-r25-linux.zip -d $HOME
+        rm -f android-ndk-r25-linux.zip
+
+        mkdir -p $HOME/packages
+    - name: Build Boost
+      run: |
+        GITHUB_WORK_DIR=$(pwd)
+        ANDROID_NDK_HOME=$HOME/android-ndk-r25/
+        PATH=$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin:$PATH
+
+        cd $HOME/packages
+        wget -q --no-check-certificate https://boostorg.jfrog.io/artifactory/main/release/1.80.0/source/boost_1_80_0.tar.bz2
+        tar xf boost_1_80_0.tar.bz2
+        rm -f boost_1_80_0.tar.bz2
+
+        cd boost_1_80_0/
+        cp $GITHUB_WORK_DIR/boost-1.80.0/user-config.jam tools/build/src/
+        ./bootstrap.sh
+        ./b2 \
+          -q \
+          -d+2 \
+          --ignore-site-config \
+          link=static \
+          threading=multi \
+          target-os=android \
+          toolset=clang-arm64v8a \
+          -sNO_ZLIB=1 \
+          -sNO_BZIP2=1 \
+          --without-python \
+          --without-mpi \
+          --without-graph_parallel \
+          --prefix=$HOME/android/boost-1.80.0/arm64v8a \
+          install
+    - name: Build OpenSSL
+      run: |
+        GITHUB_WORK_DIR=$(pwd)
+        ANDROID_NDK_HOME=$HOME/android-ndk-r25/
+        PATH=$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin:$PATH
+
+        cd $HOME/packages
+        wget -q --no-check-certificate https://www.openssl.org/source/openssl-1.1.1q.tar.gz
+        tar xf openssl-1.1.1q.tar.gz
+        rm -f openssl-1.1.1q.tar.gz
+
+        cd openssl-1.1.1q/
+        patch -p2 < $GITHUB_WORK_DIR/openssl-1.1.1q/X509_NAME_hash_old.patch
+        ./Configure \
+          android-arm64 \
+          -D__ANDROID_API__=28 \
+          no-shared \
+          no-unit-test \
+          no-tests \
+          --release \
+          --prefix=$HOME/android/openssl-1.1.1q/arm64v8a
+        make
+        make install_sw
+    - name: Build libtorrent
+      run: |
+        GITHUB_WORK_DIR=$(pwd)
+        ANDROID_NDK_HOME=$HOME/android-ndk-r25/
+        PATH=$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin:$PATH
+
+        cd $HOME/packages
+        wget -q --no-check-certificate https://github.com/arvidn/libtorrent/releases/download/v2.0.6/libtorrent-rasterbar-2.0.6.tar.gz
+        tar xf libtorrent-rasterbar-2.0.6.tar.gz
+        rm -f libtorrent-rasterbar-2.0.6.tar.gz
+
+        cd libtorrent-rasterbar-2.0.6
+        mkdir build && cd build
+        cmake \
+          -DCMAKE_TOOLCHAIN_FILE=$ANDROID_NDK_HOME/build/cmake/android.toolchain.cmake \
+          -DANDROID_ABI=arm64-v8a \
+          -DANDROID_PLATFORM=android-28 \
+          -DOPENSSL_INCLUDE_DIR=$HOME/android/openssl-1.1.1q/arm64v8a/include \
+          -DOPENSSL_SSL_LIBRARY=$HOME/android/openssl-1.1.1q/arm64v8a/lib/libssl.a \
+          -DOPENSSL_CRYPTO_LIBRARY=$HOME/android/openssl-1.1.1q/arm64v8a/lib/libcrypto.a \
+          -DBoost_INCLUDE_DIR=$HOME/android/boost-1.80.0/arm64v8a/include \
+          -DCMAKE_BUILD_TYPE=Release \
+          -DBUILD_SHARED_LIBS=False \
+          -Ddeprecated-functions=OFF \
+          -DCMAKE_INSTALL_PREFIX=$HOME/android/libtorrent-2.0.6/arm64v8a \
+          -G Ninja \
+          ..
+        cmake --build .
+        cmake --install .
+    - name: Prepare archive to upload
+      run: |
+        tar cJf cafe-android-deps.tar.xz -C $HOME/android .
+    - name: Upload libs
+      uses: actions/upload-artifact@v1
+      with:
+        name: cafe-android-deps.tar.xz
+        path: cafe-android-deps.tar.xz

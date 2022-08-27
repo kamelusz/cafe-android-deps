@@ -1,0 +1,15 @@
+--- a/openssl-1.1.1q/crypto/x509/by_dir.c	2022-07-16 10:48:24.863734144 +0300
++++ b/openssl-1.1.1q/crypto/x509/by_dir.c	2022-07-16 10:48:58.551786976 +0300
+@@ -247,7 +247,12 @@
+ 
+     ctx = (BY_DIR *)xl->method_data;
+ 
++#if defined(__ANDROID__)
++    h = X509_NAME_hash_old(name);
++#else
+     h = X509_NAME_hash(name);
++#endif
++
+     for (i = 0; i < sk_BY_DIR_ENTRY_num(ctx->dirs); i++) {
+         BY_DIR_ENTRY *ent;
+         int idx;
